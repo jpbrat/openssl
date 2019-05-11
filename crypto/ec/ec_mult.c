@@ -177,8 +177,8 @@ static int ec_mul_consttime(const EC_GROUP *group, EC_POINT *r,
      */
     cardinality_bits = BN_num_bits(cardinality);
     group_top = bn_get_top(cardinality);
-    if ((bn_wexpand(k, group_top + 1) == NULL)
-        || (bn_wexpand(lambda, group_top + 1) == NULL))
+    if ((bn_wexpand(k, group_top + 2) == NULL)
+        || (bn_wexpand(lambda, group_top + 2) == NULL))
         goto err;
 
     if (!BN_copy(k, scalar))
@@ -205,7 +205,7 @@ static int ec_mul_consttime(const EC_GROUP *group, EC_POINT *r,
      * k := scalar + 2*cardinality
      */
     kbit = BN_is_bit_set(lambda, cardinality_bits);
-    BN_consttime_swap(kbit, k, lambda, group_top + 1);
+    BN_consttime_swap(kbit, k, lambda, group_top + 2);
 
     group_top = bn_get_top(group->field);
     if ((bn_wexpand(s->X, group_top) == NULL)
@@ -214,6 +214,17 @@ static int ec_mul_consttime(const EC_GROUP *group, EC_POINT *r,
         || (bn_wexpand(r->X, group_top) == NULL)
         || (bn_wexpand(r->Y, group_top) == NULL)
         || (bn_wexpand(r->Z, group_top) == NULL))
+        goto err;
+
+    /*-
+     * Apply coordinate blinding for EC_POINT.
+     *
+     * The underlying EC_METHOD can optionally implement this function:
+     * ec_point_blind_coordinates() returns 0 in case of errors or 1 on
+     * success or if coordinate blinding is not implemented for this
+     * group.
+     */
+    if (!ec_point_blind_coordinates(group, s, ctx))
         goto err;
 
     /* top bit is a 1, in a fixed pos */
@@ -314,7 +325,7 @@ static int ec_mul_consttime(const EC_GROUP *group, EC_POINT *r,
     ret = 1;
 
  err:
-    EC_POINT_free(s);
+    EC_POINT_clear_free(s);
     BN_CTX_end(ctx);
     BN_CTX_free(new_ctx);
 
